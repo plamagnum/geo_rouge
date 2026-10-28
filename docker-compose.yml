@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: geo_nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./public:/var/www/html/public
+      - ./src:/var/www/html/src
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+    networks:
+      - geo_net
+
+  php:
+    build: ./docker/php
+    container_name: geo_php
+    volumes:
+      - ./public:/var/www/html/public
+      - ./src:/var/www/html/src
+    environment:
+      DB_HOST: mysql
+      DB_NAME: geo_roguelike
+      DB_USER: geo_user
+      DB_PASS: geo_secret_pass
+    depends_on:
+      - mysql
+    networks:
+      - geo_net
+
+  mysql:
+    image: mysql:8.0
+    container_name: geo_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secret_pass
+      MYSQL_DATABASE: geo_roguelike
+      MYSQL_USER: geo_user
+      MYSQL_PASSWORD: geo_secret_pass
+    ports:
+      - "33061:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - geo_net
+
+networks:
+  geo_net:
+    driver: bridge
+
+volumes:
+  db_data:

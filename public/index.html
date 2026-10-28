@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Хроніки Картографа</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="map-table">
+        <header class="cartographer-header">
+            <h1>🧭 Хроніки Картографа</h1>
+            <div id="hud-panel" class="hud-panel">
+                <span id="hud-supplies">⛺ Провізія: 100%</span>
+                <span id="hud-score">🧭 Очки: 0</span>
+                <span id="hud-seed">Код карти: очікування...</span>
+            </div>
+        </header>
+
+        <main class="map-canvas-area">
+            <div id="setup-screen" class="parchment-panel">
+                <h2>Виберіть експедицію</h2>
+                <div class="form-group">
+                    <label>Ім'я дослідника:</label>
+                    <input type="text" id="student-name" value="Олександр Картограф">
+                </div>
+                <div class="form-group">
+                    <label>Регіон експедиції:</label>
+                    <select id="biome-select">
+                        <option value="1">7 клас — Андійський розлом та Амазонія</option>
+                        <option value="2">8 клас — Український щит та Степ</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Seed карти (опціонально):</label>
+                    <input type="number" id="custom-seed" placeholder="424242">
+                </div>
+                <button class="btn-parchment" onclick="startNewRun()">Розпочати експедицію</button>
+            </div>
+            <div id="map-container" class="map-container" style="display: none;"></div>
+        </main>
+    </div>
+
+    <div id="encounter-modal" class="parchment-modal" style="display: none;"></div>
+
+    <script src="js/app.js"></script>
+    <script>
+        async function startNewRun() {
+            const name = document.getElementById('student-name').value;
+            const biomeId = parseInt(document.getElementById('biome-select').value);
+            const grade = biomeId === 1 ? 7 : 8;
+            const seedVal = document.getElementById('custom-seed').value;
+            const seed = seedVal ? parseInt(seedVal) : null;
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('map-container').style.display = 'flex';
+            await game.startExpedition(name, grade, biomeId, seed);
+        }
+    </script>
+</body>
+</html>
