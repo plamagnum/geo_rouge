@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
     container_name: geo_nginx
     ports:
-      - "8080:80"
+      - "${HTTP_PORT}:80"
     volumes:
       - ./public:/var/www/html/public
       - ./src:/var/www/html/src
@@ -22,12 +20,13 @@ services:
       - ./public:/var/www/html/public
       - ./src:/var/www/html/src
     environment:
-      DB_HOST: mysql
-      DB_NAME: geo_roguelike
-      DB_USER: geo_user
-      DB_PASS: geo_secret_pass
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - geo_net
 
@@ -35,12 +34,18 @@ services:
     image: mysql:8.0
     container_name: geo_mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root_secret_pass
-      MYSQL_DATABASE: geo_roguelike
-      MYSQL_USER: geo_user
-      MYSQL_PASSWORD: geo_secret_pass
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
     ports:
-      - "33061:3306"
+      - "${MYSQL_PORT}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql

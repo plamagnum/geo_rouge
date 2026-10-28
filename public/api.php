@@ -1,26 +1,56 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 
-$dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_NAME'));
-$pdo = new PDO($dsn, getenv('DB_USER'), getenv('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+try {
+    $action = $_GET['action'] ?? '';
+    $body = file_get_contents('php://input');
+    $input = $body === '' ? [] : json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+    if ($input === null) $input = [];
+    if (!is_array($input)) throw new DomainException('Некоректні дані запиту.');
 
-require_once __DIR__ . '/../src/GameEngine.php';
-$engine = new GameEngine($pdo);
+    $integer = function ($value): int {
+        $result = filter_var($value, FILTER_VALIDATE_INT);
+        if ($result === false) throw new DomainException('Очікується ціле число.');
+        return $result;
+    };
+    if (!in_array($action, ['start', 'encounter', 'answer'], true)) {
+        throw new DomainException('Невідома дія.');
+    }
+    $runId = $action === 'encounter' ? ($_GET['run_id'] ?? '') : ($input['run_id'] ?? '');
+    if ($action !== 'start' && (!is_string($runId) || $runId === '')) {
+        throw new DomainException('Потрібно вказати run_id.');
+    }
+    $nodeId = $_GET['node_id'] ?? '';
+    if ($action === 'encounter' && (!is_string($nodeId) || $nodeId === '')) {
+        throw new DomainException('Потрібно вказати node_id.');
+    }
 
-$action = $_GET['action'] ?? '';
-$input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', getenv('DB_HOST'), getenv('DB_NAME'));
+    $pdo = new PDO($dsn, getenv('DB_USER'), getenv('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
-switch ($action) {
-    case 'start':
-        echo json_encode($engine->startRun($input['student_name'] ?? 'Дослідник', (int)($input['grade'] ?? 8), (int)($input['biome_id'] ?? 2), !empty($input['seed']) ? (int)$input['seed'] : null));
-        break;
-    case 'encounter':
-        echo json_encode($engine->getEncounter($_GET['run_id'] ?? ''));
-        break;
-    case 'answer':
-        echo json_encode($engine->submitAnswer($input['run_id'], (int)$input['event_id'], (int)$input['chosen_index']));
-        break;
-    default:
-        http_response_code(400);
-        echo json_encode(['error' => 'Unknown action']);
+    require_once __DIR__ . '/../src/GameEngine.php';
+    $engine = new GameEngine($pdo);
+
+    switch ($action) {
+        case 'start':
+            $name = $input['student_name'] ?? 'Дослідник';
+            if (!is_string($name) || preg_match('/^.{0,100}$/usD', $name) !== 1) {
+                throw new DomainException('Ім’я дослідника має містити не більше 100 символів.');
+            }
+            echo json_encode($engine->startRun($name, $integer($input['grade'] ?? 8), $integer($input['biome_id'] ?? 2), ($input['seed'] ?? null) !== null ? $integer($input['seed'] ?? null) : null));
+            break;
+        case 'encounter':
+            echo json_encode($engine->getEncounter($runId, $nodeId));
+            break;
+        case 'answer':
+            if (($input['event_id'] ?? null) === null || ($input['chosen_index'] ?? null) === null) {
+                throw new DomainException('Потрібно вказати питання та варіант відповіді.');
+            }
+            echo json_encode($engine->submitAnswer($runId, $integer($input['event_id'] ?? null), $integer($input['chosen_index'] ?? null)));
+            break;
+    }
+} catch (Throwable $e) {
+    $domainError = $e instanceof DomainException || $e instanceof JsonException;
+    http_response_code($domainError ? 400 : 500);
+    echo json_encode(['error' => $domainError ? $e->getMessage() : 'Внутрішня помилка сервера. Спробуйте пізніше.']);
 }

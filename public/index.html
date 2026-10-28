@@ -52,9 +52,10 @@
             const grade = biomeId === 1 ? 7 : 8;
             const seedVal = document.getElementById('custom-seed').value;
             const seed = seedVal ? parseInt(seedVal) : null;
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('map-container').style.display = 'flex';
-            await game.startExpedition(name, grade, biomeId, seed);
+            if (await game.startExpedition(name, grade, biomeId, seed)) {
+                document.getElementById('setup-screen').style.display = 'none';
+                document.getElementById('map-container').style.display = 'flex';
+            }
         }
     </script>
 </body>
