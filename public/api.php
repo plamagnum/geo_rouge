@@ -13,10 +13,10 @@ try {
         if ($result === false) throw new DomainException('Очікується ціле число.');
         return $result;
     };
-    if (!in_array($action, ['start', 'encounter', 'answer'], true)) {
+    if (!in_array($action, ['start', 'encounter', 'answer', 'state'], true)) {
         throw new DomainException('Невідома дія.');
     }
-    $runId = $action === 'encounter' ? ($_GET['run_id'] ?? '') : ($input['run_id'] ?? '');
+    $runId = in_array($action, ['encounter', 'state'], true) ? ($_GET['run_id'] ?? '') : ($input['run_id'] ?? '');
     if ($action !== 'start' && (!is_string($runId) || $runId === '')) {
         throw new DomainException('Потрібно вказати run_id.');
     }
@@ -47,6 +47,11 @@ try {
                 throw new DomainException('Потрібно вказати питання та варіант відповіді.');
             }
             echo json_encode($engine->submitAnswer($runId, $integer($input['event_id'] ?? null), $integer($input['chosen_index'] ?? null)));
+            break;
+        case 'state':
+            $run = $engine->getRunState($runId);
+            if (!$run) throw new DomainException('Забіг не знайдено.');
+            echo json_encode($run);
             break;
     }
 } catch (Throwable $e) {

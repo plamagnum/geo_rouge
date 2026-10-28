@@ -11,6 +11,22 @@ class CartographerGame {
     showError(error) {
         alert(`Помилка: ${error.message || 'Не вдалося з’єднатися із сервером.'}`);
     }
+
+    async recoverState() {
+        try {
+            this.runState = await this.request(`/api.php?action=state&run_id=${encodeURIComponent(this.runState.id)}`);
+            this.currentEvent = null;
+            document.getElementById('encounter-modal').style.display = 'none';
+            this.renderHUD(); this.renderMap();
+            if (this.runState.pending_event_id !== null) {
+                const node = this.runState.map_graph[this.runState.current_step].find(node => node.visited);
+                this.currentEvent = await this.request(`/api.php?action=encounter&run_id=${encodeURIComponent(this.runState.id)}&node_id=${encodeURIComponent(node.id)}`);
+                this.renderEncounterModal(this.currentEvent);
+            }
+        } catch {
+            // Залишаємо останній стан, якщо з’єднання ще не відновлено.
+        }
+    }
     
     async startExpedition(studentName, grade, biomeId, seed = null) {
         if (this.busy) return false;
@@ -48,6 +64,7 @@ class CartographerGame {
             this.renderHUD(); this.renderMap();
         } catch (error) {
             this.showError(error);
+            await this.recoverState();
         } finally {
             this.busy = false;
         }
@@ -67,6 +84,7 @@ class CartographerGame {
             this.renderHUD(); this.renderMap();
         } catch (error) {
             this.showError(error);
+            await this.recoverState();
         } finally {
             this.busy = false;
         }
