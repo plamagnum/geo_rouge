@@ -50,7 +50,7 @@ $authenticated = false;
 $error = '';
 $notice = '';
 $csrf = '';
-$biomes = $runs = $events = $stats = [];
+$biomes = $runs = $events = $stats = $students = [];
 $types = ['normal' => 'Звичайний', 'elite' => 'Елітний', 'boss' => 'Бос'];
 $statuses = ['active' => 'Триває', 'victory' => 'Перемога', 'defeat' => 'Поразка'];
 $field = static function (string $name, string $default = ''): string {
@@ -95,7 +95,8 @@ try {
         $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
         $csrf = $_SESSION['csrf'];
         $notice = $_SESSION['notice'] ?? '';
-        unset($_SESSION['notice']);
+        $error = $_SESSION['error'] ?? '';
+        unset($_SESSION['notice'], $_SESSION['error']);
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!is_string($_POST['csrf'] ?? null) || !hash_equals($csrf, $_POST['csrf'])) {
@@ -134,7 +135,7 @@ try {
                 session_destroy();
                 redirectAdmin();
             }
-            if ($action !== 'create') {
+            if (!in_array($action, ['create', 'create_student', 'update_student', 'create_biome', 'update_biome'], true)) {
                 throw new DomainException('Невідома дія.');
             }
         }
@@ -152,7 +153,73 @@ try {
                 $statement->execute($params);
                 return $statement;
             };
-            $biomes = $query('SELECT id, grade, title FROM biomes ORDER BY grade, id')->fetchAll();
+            if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($field('action'),
+                ['create_student', 'update_student', 'create_biome', 'update_biome'], true)) {
+                try {
+                    $action = $field('action');
+                    $grade = integerField($_POST['grade'] ?? null, 6, 9);
+                    if ($action === 'create_student' || $action === 'update_student') {
+                        require_once __DIR__ . '/../src/StudentAuth.php';
+                        $login = StudentAuth::normalizeLogin($_POST['login'] ?? null);
+                        $displayName = textField($_POST['display_name'] ?? null, 100, 'Ім’я учня');
+                        $blocked = integerField($_POST['is_blocked'] ?? null, 0, 1);
+                        $newPassword = $_POST['new_password'] ?? null;
+                        if ($action === 'create_student') {
+                            $hash = StudentAuth::hashPassword($newPassword);
+                            $query('INSERT INTO users (login, display_name, grade, password_hash, is_blocked) VALUES (?, ?, ?, ?, ?)',
+                                [$login, $displayName, $grade, $hash, $blocked]);
+                        } else {
+                            $id = integerField($_POST['student_id'] ?? null, 1, 2147483647);
+                            if (!$query('SELECT id FROM users WHERE id = ?', [$id])->fetchColumn()) {
+                                throw new DomainException('Учня не знайдено.');
+                            }
+                            $params = [$login, $displayName, $grade, $blocked];
+                            $passwordSql = '';
+                            if ($newPassword !== '') {
+                                $passwordSql = ', password_hash = ?';
+                                $params[] = StudentAuth::hashPassword($newPassword);
+                            }
+                            $params[] = $id;
+                            $query('UPDATE users SET login = ?, display_name = ?, grade = ?, is_blocked = ?,
+                                auth_version = auth_version + 1' . $passwordSql . ' WHERE id = ?', $params);
+                        }
+                        $_SESSION['notice'] = 'Обліковий запис збережено. Попередні сеанси учня недійсні.';
+                    } else {
+                        $title = textField($_POST['biome_title'] ?? null, 100, 'Назва біому');
+                        $description = $_POST['description'] ?? null;
+                        if (!is_string($description)) throw new DomainException('Некоректний опис біому.');
+                        $description = $description === '' ? '' : textField($description, 4000, 'Опис біому');
+                        if ($action === 'create_biome') {
+                            $query("INSERT INTO biomes (grade, title, description, climate_modifiers) VALUES (?, ?, ?, JSON_OBJECT())",
+                                [$grade, $title, $description]);
+                        } else {
+                            $id = integerField($_POST['biome_id'] ?? null, 1, 2147483647);
+                            if (!$query('SELECT id FROM biomes WHERE id = ?', [$id])->fetchColumn()) {
+                                throw new DomainException('Біом не знайдено.');
+                            }
+                            $query('UPDATE biomes SET grade = ?, title = ?, description = ? WHERE id = ?',
+                                [$grade, $title, $description, $id]);
+                        }
+                        $_SESSION['notice'] = 'Біом збережено. Додайте питання для нового біому нижче.';
+                    }
+                } catch (DomainException $exception) {
+                    $_SESSION['error'] = $exception->getMessage();
+                } catch (PDOException $exception) {
+                    if (($exception->errorInfo[1] ?? null) !== 1062) throw $exception;
+                    $_SESSION['error'] = 'Цей логін уже зайнятий. Оберіть інший.';
+                }
+                redirectAdmin();
+            }
+            $studentCount = (int)$query('SELECT COUNT(*) FROM users')->fetchColumn();
+            $studentPages = max(1, (int)ceil($studentCount / 100));
+            $requestedPage = filter_var($_GET['students_page'] ?? 1, FILTER_VALIDATE_INT);
+            $studentPage = min($studentPages, max(1, $requestedPage === false ? 1 : $requestedPage));
+            $studentOffset = ($studentPage - 1) * 100;
+            $students = $query('SELECT id, login, display_name, grade, is_blocked, created_at, updated_at
+                FROM users ORDER BY id DESC LIMIT 100 OFFSET ' . $studentOffset)->fetchAll();
+            $biomes = $query('SELECT id, grade, title, description,
+                (SELECT COUNT(*) FROM events e WHERE e.biome_id = biomes.id) AS event_count
+                FROM biomes ORDER BY grade, id')->fetchAll();
             if ($_SERVER['REQUEST_METHOD'] === 'POST' && $field('action') === 'create') {
                 try {
                     $biomeId = integerField($_POST['biome_id'] ?? null, 1, 2147483647);
@@ -192,7 +259,7 @@ try {
                 COALESCE(SUM(status = 'victory'), 0) AS victory,
                 COALESCE(SUM(status = 'defeat'), 0) AS defeat,
                 COALESCE(ROUND(AVG(score), 1), 0) AS average_score FROM runs")->fetch();
-            // Run IDs are bearer credentials: never select or render them here.
+            // Statistics preserve the name and grade recorded when each run started.
             $runs = $query('SELECT r.student_name, r.grade, b.title AS biome_title, r.status, r.score,
                 r.supplies, r.current_step, r.created_at FROM runs r
                 JOIN biomes b ON b.id = r.biome_id ORDER BY r.created_at DESC LIMIT 50')->fetchAll();
@@ -255,6 +322,98 @@ try {
     <?php elseif (!$stats): ?>
     <p><a href="/admin.php">Оновити панель</a></p>
     <?php else: ?>
+    <section>
+        <h2>Учні — рівні 6–9 класів</h2>
+        <p>Клас — навчальний рівень, без груп чи паралелей. Учень входить за виданими адміністратором логіном і паролем.
+            Будь-яке редагування, блокування або розблокування завершує всі сеанси учня.
+            Старі забіги зберігають початкові ім’я та клас. Видалення облікових записів недоступне.</p>
+        <h3>Створити обліковий запис</h3>
+        <form method="post" action="/admin.php" class="question-form">
+            <input type="hidden" name="csrf" value="<?= escape($csrf) ?>">
+            <label>Логін (3–64 символи, a–z, 0–9, . _ -; початок — літера чи цифра)
+                <input name="login" minlength="3" maxlength="64" autocomplete="off" required>
+            </label>
+            <label>Ім’я учня <input name="display_name" maxlength="100" required></label>
+            <label>Клас
+                <select name="grade"><?php foreach ([6, 7, 8, 9] as $grade): ?>
+                    <option value="<?= escape($grade) ?>"><?= escape($grade) ?></option>
+                <?php endforeach; ?></select>
+            </label>
+            <label>Пароль (12–72 байти, не символи)
+                <input name="new_password" type="password" maxlength="72" autocomplete="new-password" required>
+            </label>
+            <label>Доступ
+                <select name="is_blocked"><option value="0">Дозволено</option><option value="1">Заблоковано</option></select>
+            </label>
+            <button name="action" value="create_student">Створити учня</button>
+        </form>
+        <h3 id="students-list">Учні · Сторінка <?= escape($studentPage) ?> із <?= escape($studentPages) ?></h3>
+        <nav aria-label="Сторінки учнів">
+            <?php if ($studentPage > 1): ?>
+            <a href="/admin.php?students_page=<?= escape($studentPage - 1) ?>#students-list">← Попередня</a>
+            <?php endif; ?>
+            <?php if ($studentPage < $studentPages): ?>
+            <a href="/admin.php?students_page=<?= escape($studentPage + 1) ?>#students-list">Наступна →</a>
+            <?php endif; ?>
+        </nav>
+        <?php if (!$students): ?><p>Учнів ще немає.</p><?php endif; ?>
+        <?php foreach ($students as $student): ?>
+        <details>
+            <summary><?= escape($student['display_name']) ?> · <?= escape($student['login']) ?> ·
+                <?= escape($student['grade']) ?> клас · <?= (int)$student['is_blocked'] ? 'Заблоковано' : 'Дозволено' ?></summary>
+            <p>Створено: <?= escape($student['created_at']) ?> · Оновлено: <?= escape($student['updated_at']) ?></p>
+            <form method="post" action="/admin.php" class="question-form">
+                <input type="hidden" name="csrf" value="<?= escape($csrf) ?>">
+                <input type="hidden" name="student_id" value="<?= escape($student['id']) ?>">
+                <label>Логін <input name="login" minlength="3" maxlength="64" value="<?= escape($student['login']) ?>" required></label>
+                <label>Ім’я учня <input name="display_name" maxlength="100" value="<?= escape($student['display_name']) ?>" required></label>
+                <label>Клас <select name="grade"><?php foreach ([6, 7, 8, 9] as $grade): ?>
+                    <option value="<?= escape($grade) ?>" <?= (int)$student['grade'] === $grade ? 'selected' : '' ?>><?= escape($grade) ?></option>
+                <?php endforeach; ?></select></label>
+                <label>Новий пароль (12–72 байти; порожнє поле зберігає попередній)
+                    <input name="new_password" type="password" maxlength="72" autocomplete="new-password">
+                </label>
+                <label>Доступ <select name="is_blocked">
+                    <option value="0" <?= !(int)$student['is_blocked'] ? 'selected' : '' ?>>Дозволено</option>
+                    <option value="1" <?= (int)$student['is_blocked'] ? 'selected' : '' ?>>Заблоковано</option>
+                </select></label>
+                <button name="action" value="update_student">Зберегти учня</button>
+            </form>
+        </details>
+        <?php endforeach; ?>
+    </section>
+    <section>
+        <h2>Біоми</h2>
+        <p>Каталог гри завантажується з бази даних за класом учня. Новий біом недоступний для старту, доки немає питань.
+            Зміна класу біому не перериває вже розпочаті забіги. Питання та кліматичні налаштування зберігаються.
+            Видалення біомів недоступне.</p>
+        <h3>Створити біом</h3>
+        <form method="post" action="/admin.php" class="question-form">
+            <input type="hidden" name="csrf" value="<?= escape($csrf) ?>">
+            <label>Назва <input name="biome_title" maxlength="100" required></label>
+            <label>Опис <textarea name="description" maxlength="4000" rows="3"></textarea></label>
+            <label>Клас <select name="grade"><?php foreach ([6, 7, 8, 9] as $grade): ?>
+                <option value="<?= escape($grade) ?>"><?= escape($grade) ?></option>
+            <?php endforeach; ?></select></label>
+            <button name="action" value="create_biome">Створити біом</button>
+        </form>
+        <?php if (!$biomes): ?><p>Біомів ще немає.</p><?php endif; ?>
+        <?php foreach ($biomes as $biome): ?>
+        <details>
+            <summary><?= escape($biome['grade']) ?> клас — <?= escape($biome['title']) ?> · Питань: <?= escape($biome['event_count']) ?></summary>
+            <form method="post" action="/admin.php" class="question-form">
+                <input type="hidden" name="csrf" value="<?= escape($csrf) ?>">
+                <input type="hidden" name="biome_id" value="<?= escape($biome['id']) ?>">
+                <label>Назва <input name="biome_title" maxlength="100" value="<?= escape($biome['title']) ?>" required></label>
+                <label>Опис <textarea name="description" maxlength="4000" rows="3"><?= escape($biome['description']) ?></textarea></label>
+                <label>Клас <select name="grade"><?php foreach ([6, 7, 8, 9] as $grade): ?>
+                    <option value="<?= escape($grade) ?>" <?= (int)$biome['grade'] === $grade ? 'selected' : '' ?>><?= escape($grade) ?></option>
+                <?php endforeach; ?></select></label>
+                <button name="action" value="update_biome">Зберегти біом</button>
+            </form>
+        </details>
+        <?php endforeach; ?>
+    </section>
     <section>
         <h2>Статистика експедицій</h2>
         <dl class="stats">

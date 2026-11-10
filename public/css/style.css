@@ -6,6 +6,11 @@
     --accent-red: #8b261e;
     --accent-gold: #c28e38;
 }
+[hidden] { display: none !important; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+#biome-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+#seed-help { font-size: .9rem; }
+#student-controls { margin-bottom: 12px; }
 body {
     background: radial-gradient(circle, #3d3027 0%, #1a1310 100%);
     color: var(--ink-color);

@@ -27,19 +27,26 @@ class GameEngine {
         return $map;
     }
 
-    public function startRun(string $studentName, int $grade, int $biomeId, ?int $customSeed = null): array {
+    public function startRun(string $studentName, int $grade, int $biomeId, ?int $customSeed = null, ?int $userId = null): array {
+        if ($grade < 6 || $grade > 9) throw new DomainException('Доступні рівні 6–9 класів.');
         $stmt = $this->db->prepare("SELECT grade FROM biomes WHERE id = :id");
         $stmt->execute([':id' => $biomeId]);
         $biome = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$biome) throw new DomainException('Біом не знайдено.');
         if ((int)$biome['grade'] !== $grade) throw new DomainException('Біом не відповідає обраному класу.');
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM events WHERE biome_id = ?");
+        $stmt->execute([$biomeId]);
+        if ((int)$stmt->fetchColumn() === 0) throw new DomainException('Для цього біому ще немає питань. Зверніться до адміністратора.');
+        if ($customSeed !== null && ($customSeed < -2147483648 || $customSeed > 2147483647)) {
+            throw new DomainException('Код карти має бути цілим числом від -2147483648 до 2147483647.');
+        }
 
         $seed = $customSeed !== null ? $customSeed : random_int(100000, 999999);
         $runId = bin2hex(random_bytes(16));
         $map = $this->generateMap($seed);
 
-        $stmt = $this->db->prepare("INSERT INTO runs (id, student_name, grade, biome_id, seed, map_graph, inventory) VALUES (:id, :name, :grade, :biome, :seed, :map, :inv)");
-        $stmt->execute([':id' => $runId, ':name' => $studentName, ':grade' => $grade, ':biome' => $biomeId, ':seed' => $seed, ':map' => json_encode($map), ':inv' => json_encode(['Компас'])]);
+        $stmt = $this->db->prepare("INSERT INTO runs (id, user_id, student_name, grade, biome_id, seed, map_graph, inventory) VALUES (:id, :user, :name, :grade, :biome, :seed, :map, :inv)");
+        $stmt->execute([':id' => $runId, ':user' => $userId, ':name' => $studentName, ':grade' => $grade, ':biome' => $biomeId, ':seed' => $seed, ':map' => json_encode($map), ':inv' => json_encode(['Компас'])]);
         return $this->getRunState($runId);
     }
 
