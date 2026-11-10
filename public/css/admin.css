@@ -1,0 +1,76 @@
+:root {
+    color-scheme: light;
+    --parchment: #f4ebd0;
+    --ink: #2c221e;
+    --border: #5a4533;
+    --red: #8b261e;
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 24px;
+    background: radial-gradient(circle, #3d3027, #1a1310);
+    color: var(--ink);
+    font: 1rem/1.5 Georgia, serif;
+}
+.parchment {
+    max-width: 1200px;
+    margin: auto;
+    padding: 28px;
+    background: var(--parchment);
+    border: 8px double var(--border);
+    border-radius: 4px;
+    box-shadow: 0 15px 35px #0008, inset 0 0 50px #78502833;
+}
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+h1 { width: 100%; margin: 0; color: var(--red); }
+h2 { color: var(--red); }
+a { color: var(--red); }
+section { margin-top: 24px; padding-top: 16px; border-top: 2px dashed var(--border); }
+form { margin: 0; }
+.login { max-width: 480px; }
+label { display: block; margin-top: 12px; font-weight: bold; }
+input, select, textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font: inherit;
+    background: #fffcf3;
+    color: var(--ink);
+}
+textarea { resize: vertical; }
+button {
+    margin-top: 12px;
+    padding: 10px 24px;
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    background: var(--border);
+    color: var(--parchment);
+    cursor: pointer;
+    font: inherit;
+}
+button:hover { background: var(--red); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+.stats { display: flex; flex-wrap: wrap; gap: 20px; }
+.stats div { background: #e3d2ab; padding: 12px 20px; border: 1px solid var(--border); }
+dd { margin: 0; font-size: 1.5rem; font-weight: bold; }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px; text-align: left; border: 1px solid var(--border); min-width: 85px; }
+th { background: #e3d2ab; }
+td { overflow-wrap: anywhere; }
+.message { padding: 12px; border: 2px solid var(--border); background: #e3d2ab; }
+.error { border-color: var(--red); }
+.question-form { max-width: 740px; }
+details { padding: 14px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+summary { cursor: pointer; font-weight: bold; }
+.multiline { white-space: pre-wrap; }
+code { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+    body { padding: 8px; }
+    .parchment { padding: 14px; border-width: 5px; }
+    h1 { font-size: 1.6rem; }
+    .stats { gap: 8px; }
+}
