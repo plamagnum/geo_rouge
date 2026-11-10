@@ -11,6 +11,7 @@
     <div class="map-table">
         <header class="cartographer-header">
             <h1>🧭 Хроніки Картографа</h1>
+            <a href="admin.php">Панель адміністратора</a>
             <div id="hud-panel" class="hud-panel">
                 <span id="hud-supplies">⛺ Провізія: 100%</span>
                 <span id="hud-score">🧭 Очки: 0</span>
@@ -52,9 +53,10 @@
             const grade = biomeId === 1 ? 7 : 8;
             const seedVal = document.getElementById('custom-seed').value;
             const seed = seedVal ? parseInt(seedVal) : null;
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('map-container').style.display = 'flex';
-            await game.startExpedition(name, grade, biomeId, seed);
+            if (await game.startExpedition(name, grade, biomeId, seed)) {
+                document.getElementById('setup-screen').style.display = 'none';
+                document.getElementById('map-container').style.display = 'flex';
+            }
         }
     </script>
 </body>
